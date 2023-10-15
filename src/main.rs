@@ -19,6 +19,7 @@ fn main() {
         .add_startup_system(spawn_enemies)
         .add_system(player_movement)
         .add_system(enemy_movement)
+        .add_system(enemy_hit_player)
         .add_system(update_enemy_direction)
         .add_system(confine_player_movement)
         .add_system(cofine_enemy_movement)
@@ -293,5 +294,41 @@ pub fn cofine_enemy_movement(
         }
 
         transform.translation = translation;
+    }
+}
+
+/*
+ system for detecting enemy collision with player, with parameter
+ - commands untuk memberikan command,
+ - player_query, untuk mendapat player dengan cara mendapatkan transform yang memiliki player,
+ - enemy_query, untuk mendapat enemy dengan cara mendapatkan transform yang memiliki enemy
+ - asset_server untuk menggunakan asset
+ - audio untuk menggunakan audio
+*/
+pub fn enemy_hit_player(
+    mut commands: Commands,
+    mut player_query: Query<(Entity, &Transform), With<Player>>,
+    enemy_query: Query<&Transform, With<Enemy>>,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
+) {
+    // jika terdaat player entity dan transform
+    if let Ok((player_entity, player_transform)) = player_query.get_single_mut() {
+        for enemy_transform in enemy_query.iter() {
+            let distance = player_transform
+                .translation
+                .distance(enemy_transform.translation); // get the distance between player and enemy
+
+            let player_radius = PLAYER_SIZE / 2.0;
+            let enemy_radius = ENEMY_SIZE / 2.0;
+
+            //jika terlalu dekat/bersentuhan
+            if distance < player_radius + enemy_radius {
+                println!("Collide with enemy, game over");
+                let sound_effect = asset_server.load("audio/explosionCrunch_000.ogg"); // get audio asset
+                audio.play(sound_effect); //play the audio
+                commands.entity(player_entity).despawn(); //despawning player
+            }
+        }
     }
 }
