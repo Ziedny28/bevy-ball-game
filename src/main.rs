@@ -14,11 +14,13 @@ pub const ENEMY_SIZE: f32 = 64.0; //enemy sprite size
 //star variable
 pub const NUMBER_OF_STARS: usize = 10;
 pub const STAR_SIZE: f32 = 30.0; //star sprite size
+pub const STAR_SPAWN_TIME: f32 = 1.0;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .init_resource::<Score>() // add score resource with default value and keep tracking score not delete prev value
+        .init_resource::<StarSpawnTimer>() // add score resource with default value and keep tracking
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_player)
         .add_startup_system(spawn_enemies)
@@ -31,6 +33,8 @@ fn main() {
         .add_system(cofine_enemy_movement)
         .add_system(player_hit_star)
         .add_system(update_score)
+        .add_system(tick_star_spawn_timer)
+        .add_system(spawn_star_overtime)
         .run();
 }
 
@@ -58,6 +62,20 @@ pub struct Score {
 impl Default for Score {
     fn default() -> Score {
         Score { value: 0 }
+    }
+}
+
+//uses to spawn stars overtime
+#[derive(Resource)]
+pub struct StarSpawnTimer {
+    pub timer: Timer,
+}
+
+impl Default for StarSpawnTimer {
+    fn default() -> StarSpawnTimer {
+        StarSpawnTimer {
+            timer: Timer::from_seconds(STAR_SPAWN_TIME, TimerMode::Repeating), // set default value as repeat timer each one second
+        }
     }
 }
 
@@ -431,7 +449,48 @@ system untuk memeberi tahu ketika ada update score
 - score untuk membaca apakah ada perubahan pada value dari score
 */
 pub fn update_score(score: Res<Score>) {
+    //jika terjadi perubahan nilai pada score print
     if score.is_changed() {
         println!("Score: {}", score.value.to_string());
+    }
+}
+
+/*system to take the timer, gunanya mendeteksi waktu
+
+*/
+pub fn tick_star_spawn_timer(mut star_spawn_timer: ResMut<StarSpawnTimer>, time: Res<Time>) {
+    star_spawn_timer.timer.tick(time.delta());
+}
+
+/*
+syatem untuk melakukan spawn tiapwaktu timer habis kemudian timer mengulang(durasi 1 detik)
+ - commands untuk memberikan command,
+ - asset_server untuk menggunakan asset
+ - window_query untuk mendapatkan width dan height pada window,
+ - star_spawn_timer mengetahui apakah sudah saatnya spawn
+*/
+pub fn spawn_star_overtime(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
+    star_spawn_timer: ResMut<StarSpawnTimer>,
+) {
+    //jika waktu habis
+    if star_spawn_timer.timer.finished() {
+        let window = window_query.get_single().unwrap(); //mendapatkan referensi pada window
+
+        //get random position
+        let random_x = random::<f32>() * window.width();
+        let random_y = random::<f32>() * window.height();
+
+        //spawn bitang
+        commands.spawn((
+            SpriteBundle {
+                transform: Transform::from_xyz(random_x, random_y, 0.0),
+                texture: asset_server.load("sprites/star.png"),
+                ..default()
+            },
+            Star {},
+        ));
     }
 }
