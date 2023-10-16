@@ -11,18 +11,26 @@ pub const NUMBER_OF_ENEMIES: usize = 4;
 pub const ENEMY_SPEED: f32 = 200.0;
 pub const ENEMY_SIZE: f32 = 64.0; //enemy sprite size
 
+//star variable
+pub const NUMBER_OF_STARS: usize = 10;
+pub const STAR_SIZE: f32 = 30.0; //star sprite size
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .init_resource::<Score>() // add score resource with default value and keep tracking score not delete prev value
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_player)
         .add_startup_system(spawn_enemies)
+        .add_startup_system(spawn_stars)
         .add_system(player_movement)
         .add_system(enemy_movement)
         .add_system(enemy_hit_player)
         .add_system(update_enemy_direction)
         .add_system(confine_player_movement)
         .add_system(cofine_enemy_movement)
+        .add_system(player_hit_star)
+        .add_system(update_score)
         .run();
 }
 
@@ -34,6 +42,23 @@ pub struct Player {}
 #[derive(Component)]
 pub struct Enemy {
     pub direction: Vec2, //keeping track of enemy's direction
+}
+
+//component star
+#[derive(Component)]
+pub struct Star {}
+
+// resource score
+#[derive(Resource)]
+pub struct Score {
+    pub value: u32,
+}
+
+//memberi default value pada score agar dapat digunakan pada init_resource pada fungsi main, maksudnya langsung specify jenis resource dengan value asli dan nilai tidak hilang ketika diubah
+impl Default for Score {
+    fn default() -> Score {
+        Score { value: 0 }
+    }
 }
 
 /*
@@ -106,6 +131,36 @@ pub fn spawn_camera(mut commands: Commands, window_query: Query<&Window, With<Pr
         transform: Transform::from_xyz(window.width() / 2.0, window.height() / 2.0, 0.0), //set position of camera to the middle of the screen
         ..default()
     });
+}
+
+/*
+ system untuk star enemy dengan parameter
+ - commands untuk memberikan command,
+ - window_query untuk mendapatkan width dan height pada window,
+ - asset_server untuk menggunakan asset
+*/
+pub fn spawn_stars(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
+) {
+    let window = window_query.get_single().unwrap(); //mendapatkan referensi pada window
+
+    for _ in 0..NUMBER_OF_STARS {
+        //get random position
+        let random_x = random::<f32>() * window.width();
+        let random_y = random::<f32>() * window.height();
+
+        //spawning, must be inside bundle, since we write more than one component
+        commands.spawn((
+            SpriteBundle {
+                transform: Transform::from_xyz(random_x, random_y, 0.0),
+                texture: asset_server.load("sprites/star.png"),
+                ..default()
+            },
+            Star {},
+        ));
+    }
 }
 
 /*
@@ -300,7 +355,7 @@ pub fn cofine_enemy_movement(
 /*
  system for detecting enemy collision with player, with parameter
  - commands untuk memberikan command,
- - player_query, untuk mendapat player dengan cara mendapatkan transform yang memiliki player,
+ - player_query, untuk mendapat ENTITY player dengan cara mendapatkan transform yang memiliki player, kita access entity karena kita ingon modif entity
  - enemy_query, untuk mendapat enemy dengan cara mendapatkan transform yang memiliki enemy
  - asset_server untuk menggunakan asset
  - audio untuk menggunakan audio
@@ -330,5 +385,53 @@ pub fn enemy_hit_player(
                 commands.entity(player_entity).despawn(); //despawning player
             }
         }
+    }
+}
+
+/*
+ system for detecting star collision with player, with parameter
+ - commands untuk memberikan command,
+ - player_query, untuk mendapat player dengan cara mendapatkan transform yang memiliki player,
+ - star_query, untuk mendapat ENITY enemy dengan cara mendapatkan transform yang memiliki star,kita access entity karena kita ingon modif entity
+ - asset_server untuk menggunakan asset
+ - audio untuk menggunakan audio
+ - score untuk mengubah score
+*/
+pub fn player_hit_star(
+    mut commands: Commands,
+    player_query: Query<&Transform, With<Player>>,
+    star_query: Query<(Entity, &Transform), With<Star>>,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
+    mut score: ResMut<Score>,
+) {
+    // jika terdaat player entity dan transform
+    if let Ok(player_transform) = player_query.get_single() {
+        for (star_entity, star_transform) in star_query.iter() {
+            let distance = player_transform
+                .translation
+                .distance(star_transform.translation); // get the distance between player and star
+
+            let player_radius = PLAYER_SIZE / 2.0;
+            let star_radius = STAR_SIZE / 2.0;
+
+            //jika terlalu dekat/bersentuhan
+            if distance < player_radius + star_radius {
+                println!("Collide with star");
+                score.value += 1; //menambah value score
+                let sound_effect = asset_server.load("audio/laserLarge_000.ogg"); // get audio asset
+                audio.play(sound_effect); //play the audio
+                commands.entity(star_entity).despawn(); //despawning star
+            }
+        }
+    }
+}
+/*
+system untuk memeberi tahu ketika ada update score
+- score untuk membaca apakah ada perubahan pada value dari score
+*/
+pub fn update_score(score: Res<Score>) {
+    if score.is_changed() {
+        println!("Score: {}", score.value.to_string());
     }
 }
