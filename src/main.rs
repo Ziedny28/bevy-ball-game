@@ -24,6 +24,7 @@ fn main() {
         .init_resource::<Score>() // add score resource with default value and keep tracking score not delete prev value
         .init_resource::<StarSpawnTimer>()
         .init_resource::<EnemySpawnTimer>()
+        .init_resource::<HighScores>()
         .add_event::<GameOver>()
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_player)
@@ -42,6 +43,9 @@ fn main() {
         .add_system(tick_enemy_spawn_timer)
         .add_system(spawn_enemies_overtime)
         .add_system(exit_game)
+        .add_system(handle_game_over)
+        .add_system(update_high_scores)
+        .add_system(high_scores_updated)
         .run();
 }
 
@@ -102,6 +106,17 @@ impl Default for EnemySpawnTimer {
 // struct yang akan digunakan untuk event
 pub struct GameOver {
     pub score: u32,
+}
+
+#[derive(Resource, Debug)]
+pub struct HighScores {
+    pub scores: Vec<(String, u32)>,
+}
+
+impl Default for HighScores {
+    fn default() -> HighScores {
+        HighScores { scores: Vec::new() }
+    }
 }
 
 /*
@@ -405,12 +420,12 @@ pub fn cofine_enemy_movement(
 */
 pub fn enemy_hit_player(
     mut commands: Commands,
-    // mut game_over_event_writer: EventWriter<GameOver>,
+    mut game_over_event_writer: EventWriter<GameOver>,
     mut player_query: Query<(Entity, &Transform), With<Player>>,
     enemy_query: Query<&Transform, With<Enemy>>,
     asset_server: Res<AssetServer>,
     audio: Res<Audio>,
-    // score: Res<Score>,
+    score: Res<Score>,
 ) {
     // jika terdaat player entity dan transform
     if let Ok((player_entity, player_transform)) = player_query.get_single_mut() {
@@ -428,6 +443,7 @@ pub fn enemy_hit_player(
                 let sound_effect = asset_server.load("audio/explosionCrunch_000.ogg"); // get audio asset
                 audio.play(sound_effect); //play the audio
                 commands.entity(player_entity).despawn(); //despawning player
+                game_over_event_writer.send(GameOver { score: score.value });
             }
         }
     }
@@ -560,5 +576,26 @@ pub fn exit_game(
 ) {
     if keyboard_input.just_pressed(KeyCode::Escape) {
         app_exit_event_writer.send(AppExit);
+    }
+}
+
+pub fn handle_game_over(mut game_over_event_reader: EventReader<GameOver>) {
+    for event in game_over_event_reader.iter() {
+        println!("Your final score is {}", event.score.to_string());
+    }
+}
+
+pub fn update_high_scores(
+    mut game_over_event_reader: EventReader<GameOver>,
+    mut high_scores: ResMut<HighScores>,
+) {
+    for event in game_over_event_reader.iter() {
+        high_scores.scores.push(("Player".to_string(), event.score));
+    }
+}
+
+pub fn high_scores_updated(high_scores: Res<HighScores>) {
+    if high_scores.is_changed() {
+        println!("High Scores: {:?}", high_scores);
     }
 }
